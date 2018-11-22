@@ -127,11 +127,10 @@ statistics definition, conditional request (IF MODIFIED SINCE):
     </request>
   </session>
 
-  <session name="backoffice" probability="30" ...>
-  ... 
+  <session name="backoffice" probability="30" >
+   <!--  -->
   </session>
  </sessions>
-
 
 
 If you use an absolute URL, the server used in the URL will override
@@ -543,7 +542,7 @@ Here's an example:
 
 .. code-block:: xml
 
- <-- First, choose an random room and random nickname: -->
+ <!-- First, choose an random room and random nickname: -->
  <setdynvars sourcetype="random_number" start="1" end="100">
    <var name="room"/>
  </setdynvars>
@@ -879,7 +878,16 @@ If you use ``change_type`` to start a websocket, don't forget to set
 
 .. code-block:: xml
 
- <change_type new_type="ts_websocket" host="127.0.0.1" port="8080" server_type="tcp" restore="true" store="true" bidi="true"/>
+ <change_type new_type="ts_websocket" host="127.0.0.1" port="8080" server_type="tcp" restore="true" store="true" bidi="true"/>i
+
+When connecting to a websocket server you can set the ``origin``, which can be
+checked by a websocket as a security measure, see
+https://tools.ietf.org/html/rfc6455#section-10.2 for more details.
+If not set this defaults to the ``host`` value.
+
+.. code-block:: xml
+
+  <websocket type="connect" origin="https://example.com"></websocket>
 
 AMQP
 ^^^^^^^^^
@@ -974,7 +982,7 @@ MQTT
 It supports publish messages, subscribe and unsubscribe topics,
 Available request types:
 
-* connect (with options like clean_start, will_topic etc)
+* connect (with options like clean_start, will_topic, username, password, etc.)
 * disconnect
 * publish (with topic name, qos level and retain flag)
 * subscribe (with topic name and qos level)
@@ -1223,10 +1231,10 @@ The only way to control the response from the server is to use the
 
 * ``ack="local"`` as soon as a packet is received from the server, the
   request is considered as completed. Hence if you use a local ack with a request
-  that do not require a response from the server, it
+  that does not require a response from the server, it
   will wait forever (or until a timeout is reached).
 
-* ``ack="no_ack"`` as soon as the request is send, it is considered as completed (do
+* ``ack="no_ack"`` as soon as the request is sent, it is considered as completed (do
   not wait for incoming data).
 
 * ``ack="global"`` synchronized users. its main use is for waiting for all

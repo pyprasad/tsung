@@ -46,7 +46,7 @@
          concat_atoms/1, ceiling/1, accept_loop/3, append_to_filename/3, splitchar/2,
          randombinstr/1,urandombinstr/1,log_transaction/1,conv_entities/1, wildcard/2,
          ensure_all_started/2, pmap/2, pmap/3, get_node_id/0, filtermap/2, new_ets/2,
-         is_controller/0, spread_list/1, pack/1]).
+         is_controller/0, spread_list/1, pack/1, random_alphanumstr/1]).
 
 level2int("debug")     -> ?DEB;
 level2int("info")      -> ?INFO;
@@ -179,7 +179,7 @@ get_node_id() ->
     case string:tokens(atom_to_list(node()),"@") of
         ["tsung_control"++_,_]    -> 123456;
         ["tsung"++Tail,_]         ->
-            {match, [I]} = re:run(Tail, "\\d+$", [{capture, all, list}]),
+            {match, [I]} = re:run(Tail, "\\d+$", [{capture, all, list}]), %" add comment for erlang-mode bug
             list_to_integer(I);
         _                         -> 654321
     end.
@@ -318,9 +318,15 @@ erl_system_args(extended)->
              end,
     Shared = SetArg(shared),
     Hybrid = SetArg(hybrid),
-    case  ?config(smp_disable) of
-        true ->   Smp = " -smp disable ";
-        _    ->   Smp = SetArg(smp)
+    case  {?config(smp_disable), erlang:system_info(otp_release)} of
+        {true,"R"++_} ->
+            Smp = " -smp disable ";
+        {true,V} when (V =:= "17" orelse V =:= "18" orelse V =:= "19") ->
+            Smp = " -smp disable ";
+        {true,_} ->
+            Smp = " +S 1  ";
+        _    ->
+            Smp = SetArg(smp)
     end,
     Inet = case init:get_argument(kernel) of
                {ok,[["inetrc",InetRcFile]]} ->
@@ -757,6 +763,11 @@ urandomstr(Size) when is_integer(Size), Size >= 0 ->
 %%----------------------------------------------------------------------
 randomstr(Size) when is_integer(Size), Size >= 0 ->
      lists:map(fun (_) -> random:uniform(25) + $a  end, lists:seq(1,Size)).
+
+random_alphanumstr(Size) when is_integer(Size), Size >= 0 ->
+    AllowedChars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
+    S = length(AllowedChars),
+    lists:map(fun (_) -> lists:nth(random:uniform(S), AllowedChars) end, lists:seq(1,Size)).
 
 %%----------------------------------------------------------------------
 %% @spec randombinstr(Size::integer()) ->binary()

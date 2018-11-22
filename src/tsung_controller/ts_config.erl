@@ -263,12 +263,19 @@ parse(Element = #xmlElement{name=client, attributes=Attrs},
                               1;
                           {Val, _} -> Val
                       end,
-                %% must be hostname and not ip:
-                case ts_utils:is_ip(Host) of
-                    true ->
-                        io:format(standard_error,"ERROR: client config: 'host' attribute must be a hostname, "++ "not an IP ! (was ~p)~n",[Host]),
+                %% if the node()'s hostname is ip, then all host should be IP
+                {ok, MasterHostname} = ts_utils:node_to_hostname(node()),
+                case {ts_utils:is_ip(MasterHostname), ts_utils:is_ip(Host)} of
+                   %% must be hostname and not ip:
+                    {false, true} ->
+                        io:format(standard_error,"ERROR: client config: 'host' attribute must be a hostname, "++ "not an IP ! (was ~p). You can use -I <> option.~n",[Host]),
                         exit({error, badhostname});
-                    false ->
+                    {true, true} ->
+                        %% add a new client for each CPU
+                        lists:duplicate(CPU,#client{host     = Host,
+                                                    weight   = Weight/CPU,
+                                                    maxusers = MaxUsers});
+                    {_, _} ->
                         %% add a new client for each CPU
                         lists:duplicate(CPU,#client{host     = Host,
                                                     weight   = Weight/CPU,
@@ -332,14 +339,16 @@ parse(Element = #xmlElement{name=iprange, attributes=Attrs},
 parse(Element = #xmlElement{name=arrivalphase, attributes=Attrs},
       Conf = #config{arrivalphases=AList}) ->
 
-    Phase      = getAttr(integer,Attrs, phase),
-    IDuration  = getAttr(integer, Attrs, duration),
-    Unit  = getAttr(string,Attrs, unit, "second"),
+    Phase      = getAttr(integer, Attrs,   phase),
+    IDuration  = getAttr(integer, Attrs,   duration),
+    Unit       = getAttr(string,  Attrs,   unit, "second"),
+    WaitSessionsEnd  = getAttr(atom,Attrs, wait_all_sessions_end, false),
     D = to_milliseconds(Unit, IDuration),
     case lists:keysearch(Phase,#arrivalphase.phase,AList) of
         false ->
             lists:foldl(fun parse/2,
                         Conf#config{arrivalphases = [#arrivalphase{phase=Phase,
+                                                                   wait_all_sessions_end=WaitSessionsEnd,
                                                                    duration=D
                                                                   }
                                                      |AList]},
@@ -452,7 +461,7 @@ parse(Element = #xmlElement{name=transaction, attributes=Attrs},
       Conf = #config{session_tab = Tab, sessions=[CurS|_], curid=Id}) ->
 
     RawName = getAttr(Attrs, name),
-    {ok, [{atom,1,Name}],1} = erl_scan:string("tr_"++RawName),
+    {ok, [{atom,_,Name}],_} = erl_scan:string("tr_"++RawName),
     ?LOGF("Add start transaction ~p in session ~p as id ~p",
          [Name,CurS#session.id,Id+1],?INFO),
     ets:insert(Tab, {{CurS#session.id, Id+1}, {transaction,start,Name}}),
@@ -603,7 +612,7 @@ parse(_Element = #xmlElement{name=repeat,attributes=Attrs,content=Content},
 parse(#xmlElement{name=dyn_variable, attributes=Attrs},
       Conf=#config{sessions=[CurS|_],dynvar=DynVars}) ->
     StrName  = ts_utils:clean_str(getAttr(Attrs, name)),
-    {ok, [{atom,1,Name}],1} = erl_scan:string("'"++StrName++"'"),
+    {ok, [{atom,_,Name}],_} = erl_scan:string("'"++StrName++"'"),
     {Type,Expr} = case {getAttr(string,Attrs,re,none),
                         getAttr(string,Attrs,pgsql_expr,none),
                         getAttr(string,Attrs,xpath,none),
@@ -675,10 +684,16 @@ parse( #xmlElement{name=interaction, attributes=Attrs},
 
     Action   = list_to_atom(getAttr(string, Attrs, action, "send")),
     RawId = getAttr(Attrs, id),
-    {ok, [{atom,1,IdInteraction}],1} = erl_scan:string("tr_"++RawId),
+    {ok, [{atom,_,IdInteraction}],_} = erl_scan:string("tr_"++RawId),
 
     ets:insert(Tab,{{CurS#session.id, Id+1}, {interaction, Action, IdInteraction}}),
     ?LOGF("Parse  interaction  ~p:~p ~n",[Action,Id],?NOTICE),
+    Conf#config{curid=Id+1 };
+
+parse( #xmlElement{name=abort, attributes=Attrs},
+      Conf = #config{sessions=[CurS|_Other], curid=Id,session_tab = Tab}) ->
+    Type = getAttr(atom, Attrs, type, session),
+    ets:insert(Tab,{{CurS#session.id, Id+1}, {abort, Type}}),
     Conf#config{curid=Id+1 };
 
 parse( Element = #xmlElement{name=set_option, attributes=Attrs},
@@ -957,6 +972,18 @@ parse(Element = #xmlElement{name=option, attributes=Attrs},
                         false ->
                             lists:foldl( fun parse/2, Conf, Element#xmlElement.content)
                     end;
+                "tcp_reuseport" ->
+                    Reuseport = getAttr(atom, Attrs, value, false),
+                    case Reuseport of
+                        true ->
+                            OldProto =  Conf#config.proto_opts,
+                            NewProto =  OldProto#proto_opts{tcp_reuseport = Reuseport},
+                            lists:foldl( fun parse/2, Conf#config{proto_opts=NewProto},
+                                         Element#xmlElement.content);
+                        false ->
+                            lists:foldl( fun parse/2, Conf, Element#xmlElement.content)
+                    end;
+
                 Other ->
                     ?LOGF("Unknown option ~p !~n",[Other], ?WARN),
                     lists:foldl( fun parse/2, Conf, Element#xmlElement.content)
@@ -1102,16 +1129,16 @@ getTypeAttr(string, String)-> String;
 getTypeAttr(list, String)-> String;
 getTypeAttr(float_or_integer, String)->
     case erl_scan:string(String) of
-        {ok, [{integer,1,I}],1} -> I;
-        {ok, [{float,1,F}],1} -> F
+        {ok, [{integer,_,I}],_} -> I;
+        {ok, [{float,_,F}],_} -> F
     end;
 getTypeAttr(integer_or_string, String)->
     case erl_scan:string(String) of
-        {ok, [{integer,1,I}],1} -> I;
+        {ok, [{integer,_,I}],_} -> I;
         _ -> String
     end;
 getTypeAttr(Type, String) ->
-    {ok, [{Type,1,Val}],1} = erl_scan:string(String),
+    {ok, [{Type,_,Val}],_} = erl_scan:string(String),
     Val.
 
 

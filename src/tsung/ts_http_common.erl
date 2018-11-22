@@ -186,11 +186,20 @@ oauth_sign(Method, #http_request{url=URL,
                          oauth_consumer=Consumer,
                          oauth_access_token=AccessToken,
                          oauth_access_secret=AccessSecret,
-                         oauth_url=ServerURL})->
+                         oauth_url=ServerURL,
+                         content_type = ContentType,
+                         body = Body})->
     %%UrlParams = oauth_uri:params_from_string(URL),
     [_He|Ta] = string:tokens(URL,"?"),
     UrlParams = oauth_uri:params_from_string(lists:flatten(Ta)),
-    Params = oauth:signed_params(Method, ServerURL, UrlParams, Consumer, AccessToken, AccessSecret),
+    AllParams = case ContentType of
+                    ?BODY_PARAM ->
+                        BodyParams = oauth_uri:params_from_string(lists:flatten(binary_to_list(Body))),
+                        UrlParams ++ BodyParams;
+                    _ ->
+                        UrlParams
+                end,
+    Params = oauth:signed_params(Method, ServerURL, AllParams, Consumer, AccessToken, AccessSecret),
     ["Authorization: OAuth ", oauth_uri:params_to_header_string(Params),?CRLF].
 
 %%----------------------------------------------------------------------
@@ -603,7 +612,7 @@ http_method(Method) ->
 parse_status([A,B,C|_], Http=#http{status={Prev,_}}) ->
     Status=list_to_integer([A,B,C]),
     ?DebugF("HTTP Status ~p~n",[Status]),
-    ts_mon:add({ count, Status }),
+    ts_mon_cache:add({ count, Status }),
     Http#http{status={Status,Prev}}.
 
 %%--------------------------------------------------------------------
@@ -694,4 +703,4 @@ log_error(protocol,Error) ->
 log_error(Type,Error) ->
     log_error2(Type,Error).
 log_error2(_,Error)->
-    ts_mon:add({count, Error}).
+    ts_mon_cache:add({count, Error}).

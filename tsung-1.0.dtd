@@ -87,6 +87,7 @@
 <!ATTLIST arrivalphase
      duration NMTOKEN #REQUIRED
      phase    NMTOKEN #REQUIRED
+     wait_all_sessions_end NMTOKEN "false"
      unit     (hour | minute | second | millisecond) #REQUIRED>
 
 <!ELEMENT users EMPTY>
@@ -133,7 +134,7 @@
 
 <!ELEMENT sessions (session+)>
 <!ELEMENT session ( request | thinktime | transaction | setdynvars | for |
-repeat | if | change_type | foreach | set_option | interaction )*>
+repeat | if | change_type | foreach | set_option | interaction | abort )*>
 <!ATTLIST session
     name         CDATA #REQUIRED
     bidi         CDATA #IMPLIED
@@ -149,6 +150,10 @@ repeat | if | change_type | foreach | set_option | interaction )*>
     weight       NMTOKEN #IMPLIED
 >
 
+<!ELEMENT abort EMPTY>
+<!ATTLIST abort
+          type (session|all) "session" >
+
 <!ELEMENT interaction EMPTY>
 <!ATTLIST interaction
           action (send|receive) #REQUIRED
@@ -157,8 +162,8 @@ repeat | if | change_type | foreach | set_option | interaction )*>
 <!ELEMENT change_type EMPTY>
 <!ATTLIST change_type
      new_type         (ts_jabber | ts_http | ts_raw | ts_pgsql | ts_ldap | ts_webdav | ts_mysql | ts_fs | ts_shell | ts_job | ts_websocket | ts_amqp | ts_mqtt) #REQUIRED
-     host NMTOKEN #REQUIRED
-     port NMTOKEN #REQUIRED
+     host CDATA #REQUIRED
+     port CDATA #REQUIRED
      server_type NMTOKEN #REQUIRED
      store  ( true | false ) "false"
      restore ( true | false ) "false"
@@ -174,7 +179,7 @@ repeat | if | change_type | foreach | set_option | interaction )*>
 
 <!ELEMENT match (#PCDATA)>
 <!ATTLIST match
-    do (continue|loop|abort|restart|log|dump) "continue"
+    do (continue|loop|abort|restart|log|dump|abort_test) "continue"
     when (match|nomatch) "match"
     subst (true|false) "false"
     loop_back   NMTOKEN "0"
@@ -200,7 +205,7 @@ repeat | if | change_type | foreach | set_option | interaction )*>
     >
 
 <!ELEMENT transaction (request | setdynvars | thinktime | for | repeat
-          | if | foreach | interaction )+>
+          | if | foreach | interaction | abort )+>
 <!ATTLIST transaction name NMTOKEN #REQUIRED>
 
 <!ELEMENT http (oauth?, www_authenticate?, soap?, http_header*, add_cookie*)>
@@ -374,6 +379,7 @@ repeat | if | change_type | foreach | set_option | interaction )*>
     type (connect | message | close) #REQUIRED
     ack  (no_ack | parse) #IMPLIED
     frame (binary | text) #IMPLIED
+    origin CDATA ""
     subprotocols CDATA ""
     path CDATA "/" >
 
@@ -442,7 +448,7 @@ repeat | if | change_type | foreach | set_option | interaction )*>
     name CDATA #REQUIRED>
 
 <!ELEMENT for (request | thinktime | transaction | setdynvars | for |
-          if | repeat | change_type | foreach | interaction )+>
+          if | repeat | change_type | foreach | interaction | abort )+>
 <!ATTLIST for
     var      CDATA      #REQUIRED
     from     CDATA      #REQUIRED
@@ -450,7 +456,7 @@ repeat | if | change_type | foreach | set_option | interaction )*>
     incr     NMTOKEN   "1">
 
 <!ELEMENT foreach (request | thinktime | transaction | setdynvars | foreach |
-          if | repeat | change_type | for  | interaction)+>
+          if | repeat | change_type | for  | interaction | abort )+>
 <!ATTLIST foreach
     name     NMTOKEN    #REQUIRED
     in       NMTOKEN    #REQUIRED
@@ -459,13 +465,13 @@ repeat | if | change_type | foreach | set_option | interaction )*>
 >
 
 <!ELEMENT repeat (request | thinktime | transaction | setdynvars | for | repeat
-| while | if | until | change_type | foreach  | interaction)+>
+| while | if | until | change_type | foreach  | interaction | abort )+>
 <!ATTLIST repeat
     name      NMTOKEN    #REQUIRED
     max_repeat  NMTOKEN   "20">
 
 <!ELEMENT if (request | thinktime | transaction | setdynvars | for | repeat
-| while | if | until | change_type | foreach | interaction)+>
+| while | if | until | change_type | foreach | interaction | abort )+>
 <!ATTLIST if
     var       CDATA #REQUIRED
     eq        CDATA #IMPLIED
